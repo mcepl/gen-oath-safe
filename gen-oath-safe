@@ -1,0 +1,58 @@
+#!/bin/bash
+
+echo 
+
+tempfile="$(mktemp)"
+
+name="$1"
+
+if [ -z "$name" ]; then
+    echo "ERROR: Must provide a name"
+    exit 1
+fi
+
+type="$2"
+case "$type" in
+    totp)
+        tokentype="totp"
+        tokenID="HOTP/T30"
+    ;;
+    hotp)
+        tokentype="hotp"
+        tokenID="HOTP"
+    ;;
+    *)
+        echo "Bad or no token type specified, using TOTP"
+        tokentype="totp"
+        tokenID="HOTP/T30"
+    ;;
+esac
+
+# Old method
+#secretkey="$(dd if=/dev/urandom bs=1M count=1 2> /dev/null | sha512sum | cut -d' ' -f1 | cut -c1-40)"
+# New method
+secretkey="$(openssl rand -hex 20)"
+
+# Paranoia Mode
+#secretkey="$(openssl rand -hex 20 -rand /dev/random)"
+
+b32key="$(echo -n "$secretkey" | python -c "import sys; import base64; import binascii; print base64.b32encode(binascii.unhexlify(sys.stdin.read()))")"
+
+echo "Key in Hex: $secretkey"
+echo "Key in b32: $b32key"
+qrencode -m 1 -s 1 "otpauth://$tokentype/$1?secret=$b32key" -o $tempfile
+
+filesize="$(file $tempfile | cut -d, -f2 | cut -d' ' -f2)"
+
+img2txt -H $filesize -W $(( $filesize * 2)) $tempfile
+
+if [ "$tokentype" == "hotp" ]; then
+    echo "NOTE: Make sure you're loading the yubikey config into the slot you want!"
+    echo ""
+    echo "Yubikey setup line (Slot 1):"
+    echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a$secretkey"
+    echo "Yubikey setup line (Slot 2):"
+    echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a$secretkey"
+fi
+
+rm $tempfile
