@@ -32,7 +32,7 @@
 
 function digitalRoot() {
     # Requires on input a string
-    # JavaScript equivalent (for copmarison):
+    # JavaScript equivalent (for comparison):
     # 
     # function digitalRoot(inNo) {
     #   var cipher_sum = Array.reduce(inNo, function(prev, cur) {
