@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Copyright (C) 2016 Thomas Zink <tz@uni.kn>
 # Copyright (C) 2013 Richard Monk <rmonk@redhat.com>
 # Originally from
 # https://post-office.corp.redhat.com/mailman/private/memo-list\
@@ -29,16 +30,14 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-
 function digitalRoot() {
-    # Requires on input a string
+    # Requires an input a string
     # JavaScript equivalent (for comparison):
     # 
     # function digitalRoot(inNo) {
     #   var cipher_sum = Array.reduce(inNo, function(prev, cur) {
     #     return prev + cur.charCodeAt(0);
     #   }, 0);
-    # 
     #   return cipher_sum % 10;
     # }
 
@@ -62,7 +61,13 @@ tempfile="$(mktemp)"
 name="$1"
 
 if [ -z "$name" ]; then
-    echo "ERROR: Must provide a name"
+	echo "usage: $0 username [tokentype] [secret]"
+	echo ""
+	echo "Options:"
+	echo "    tokentype: hotp | totp"
+	echo "    secret: a hex encoded secret key"
+	echo ""
+    echo "ERROR: Must provide a name."
     exit 1
 fi
 
@@ -77,39 +82,53 @@ case "$type" in
         tokenID="HOTP"
     ;;
     *)
-        echo "Bad or no token type specified, using TOTP"
+        echo "INFO: Bad or no token type specified, using TOTP."
         tokentype="totp"
         tokenID="HOTP/T30"
     ;;
 esac
 
-# Old method
-#secretkey="$(dd if=/dev/urandom bs=1M count=1 2> /dev/null | sha512sum | cut -d' ' -f1 | cut -c1-40)"
-# New method
-secretkey="$(openssl rand -hex 20)"
+hexkey="$3"
+if [ -z "$hexkey" ]; then
+	echo "INFO: No secret provided, generating random secret."
+	hexkey="$(openssl rand -hex 20)"
+fi
 
-# Paranoia Mode
-#secretkey="$(openssl rand -hex 20 -rand /dev/random)"
+if [[ ! "$hexkey" =~ ^[A-Fa-f0-9]*$ ]]; then
+	echo "ERROR: Invalid secret, must be hex encoded."
+	exit 1
+fi
 
-b32key="$(echo -n "$secretkey" | python -c "import sys; import base64; import binascii; print base64.b32encode(binascii.unhexlify(sys.stdin.read()))")"
+echo ""
+
+b32key="$(echo -n "$hexkey" | python -c "import sys; import base64; import binascii; print base64.b32encode(binascii.unhexlify(sys.stdin.read()))")"
 
 digitalRoot $b32key && b32checksum=$sum
 
-echo "Key in Hex: $secretkey"
-echo "Key in b32: $b32key (check: $b32checksum)"
+echo "Key in Hex: $hexkey"
+echo "Key in b32: $b32key (checksum: $b32checksum)"
+echo ""
+echo "URI: otpauth://$tokentype/$1?secret=$b32key"
+
 qrencode -m 1 -s 1 "otpauth://$tokentype/$1?secret=$b32key" -o $tempfile
-
 filesize="$(file $tempfile | cut -d, -f2 | cut -d' ' -f2)"
-
 img2txt -H $filesize -W $(( $filesize * 2)) $tempfile
 
 if [ "$tokentype" == "hotp" ]; then
-    echo "NOTE: Make sure you're loading the yubikey config into the slot you want!"
     echo ""
-    echo "Yubikey setup line (Slot 1):"
-    echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a$secretkey"
-    echo "Yubikey setup line (Slot 2):"
-    echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a$secretkey"
+    echo "Yubikey setup (Slot 1):"
+    echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a$hexkey"
+    echo "Yubikey setup (Slot 2):"
+    echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a$hexkey"
+	algorithm="HOTP"
 fi
+
+if [ "$tokentype" == "totp" ]; then 
+	algorithm="HOTP/T30"
+fi
+
+echo ""
+echo "users.oath / otp.users configuration:"
+echo "$algorithm $name - $hexkey"
 
 rm $tempfile
