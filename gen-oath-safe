@@ -63,6 +63,10 @@ name="$1"
 if [ -z "$name" ] || [[ "$name" =~ (-h|--help)  ]]; then
 	echo "usage: $0 username [tokentype] [secret]"
 	echo ""
+	echo "username: [issuer:]username[@[domain]]"
+	echo "          using @ without domain uses"
+	echo "          host's FQDN as domain"
+	echo ""
 	echo "Options:"
 	echo "    tokentype: hotp | totp"
 	echo "    secret: a hex encoded secret key"
@@ -104,12 +108,40 @@ b32key="$(echo -n "$hexkey" | python -c "import sys; import base64; import binas
 
 digitalRoot $b32key && b32checksum=$sum
 
+issuer=''
+domain=''
+
+if [[ "$name" =~ ^(.*):(.*)$ ]]; then
+	issuer=${BASH_REMATCH[1]}
+	name=${BASH_REMATCH[2]}
+fi
+
+if [[ "$name" =~ ^(.*)@(.*)$ ]]; then
+	name=${BASH_REMATCH[1]}
+	domain=${BASH_REMATCH[2]}
+	if [[ -z "$domain" ]]; then
+		domain=$(hostname -f)
+	fi
+fi
+
+if [ -z "$domain" ]; then
+	user="$name"
+else
+	user="$name@$domain"
+fi
+
+if [ -z "$issuer" ]; then
+	uri="otpauth://$tokentype/$user?secret=$b32key"
+else
+	uri="otpauth://$tokentype/$issuer:$user?secret=$b32key&issuer=$issuer"
+fi
+
 echo "Key in Hex: $hexkey"
 echo "Key in b32: $b32key (checksum: $b32checksum)"
 echo ""
-echo "URI: otpauth://$tokentype/$1?secret=$b32key"
+echo "URI: $uri"
 
-qrencode -m 1 -s 1 "otpauth://$tokentype/$1?secret=$b32key" -o $tempfile
+qrencode -m 1 -s 1 "$uri" -o $tempfile
 filesize="$(file $tempfile | cut -d, -f2 | cut -d' ' -f2)"
 img2txt -H $filesize -W $(( $filesize * 2)) $tempfile
 
