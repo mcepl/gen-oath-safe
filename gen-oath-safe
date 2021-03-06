@@ -104,7 +104,7 @@ fi
 
 echo ""
 
-b32key="$(echo -n "$hexkey" | python -c "import sys; import base64; import binascii; print(base64.b32encode(binascii.unhexlify(sys.stdin.read())))")"
+b32key="$(echo -n $hexkey | python3 -c 'import sys; import base64; import binascii; print(base64.b32encode(binascii.unhexlify(sys.stdin.read())).decode("utf8"))')"
 
 digitalRoot $b32key && b32checksum=$sum
 
