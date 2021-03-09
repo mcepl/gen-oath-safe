@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/env bash
 
 # Copyright (C) 2016 Thomas Zink <tz@uni.kn>
 # Copyright (C) 2013 Richard Monk <rmonk@redhat.com>
@@ -41,25 +41,33 @@ function digitalRoot() {
     #   return cipher_sum % 10;
     # }
 
-    sum=0
-    n=$1
-    i=0
-
+    local sum=0
+    local n=$1
+    local i=0
+    
     while [ $i -lt ${#n} ] ; do
-        ord=$(echo -n ${n:$i:1}|od -An -td|tr -d '[:blank:]')
-        sum=$(( sum + ord )) # calculate sum of digit
+        ord=$(printf '%s' ${n:i:1} | od -An -td | tr -d '[:blank:]')
+        sum=$(( sum + ord )) # calculate sum of digits
         i=$(( i + 1 ))
     done
-
-    sum=$(( sum % 10 ))
+    
+    echo -n $(( sum % 10 ))
 }
 
-echo 
+echo
 
-tempfile="$(mktemp)"
+# define variables
+  name="$1"
+issuer=''
+domain=''
 
-name="$1"
+# set output type of qrcode for displaying on shell, use environment-variable if set
+# [ ANSI ANSI256 ASCII ASCIIi UTF8 ANSIUTF8 ]
+if [ -z "${qrtype}" ]; then
+    qrtype=ANSI
+fi
 
+# check if "name" is defined or "help" is requested
 if [ -z "$name" ] || [[ "$name" =~ (-h|--help)  ]]; then
 	echo "usage: $0 username [tokentype] [secret]"
 	echo ""
@@ -74,6 +82,7 @@ if [ -z "$name" ] || [[ "$name" =~ (-h|--help)  ]]; then
     exit 1
 fi
 
+# get token type
 type="$2"
 case "$type" in
     totp)
@@ -91,66 +100,83 @@ case "$type" in
     ;;
 esac
 
+# check for hexkey from user-input or generate a new one
 hexkey="$3"
 if [ -z "$hexkey" ]; then
 	echo "INFO: No secret provided, generating random secret."
-	hexkey="$(openssl rand -hex 20)"
+	
+    # use openssl if existing, else use standard tools
+    openssl="$(command -v openssl)"
+    if [ -z "$openssl" ]; then
+        hexkey="$(openssl rand 1024)"
+    else
+        hexkey="$(head -c 1024 /dev/urandom | tr -d '\0')"
+    fi
+    
+    # create url-safe base32 with a length of 30 characters
+    hexkey="$(printf '%s' $hexkey | base32 | tr -dc '[:alpha:][digit]' | od -tx1 -An | tr -d '[:space:]' | head -c 30 | tr -d '\n')"
 fi
 
+# check hexkey
 if [[ ! "$hexkey" =~ ^[A-Fa-f0-9]*$ ]]; then
 	echo "ERROR: Invalid secret, must be hex encoded."
 	exit 1
 fi
 
-echo ""
+echo
 
-b32key="$(echo -n $hexkey | python3 -c 'import sys; import base64; import binascii; print(base64.b32encode(binascii.unhexlify(sys.stdin.read())).decode("utf8"))')"
+# get base32 of hexkey
+b32key="$(printf '%s' $hexkey | xxd -r -ps | base32)"
 
-digitalRoot $b32key && b32checksum=$sum
+# calculate checksum using "repeated digital sum"
+b32checksum=$(digitalRoot $b32key)
 
-issuer=''
-domain=''
+if [ -z $b32checksum ]; then
+    echo "ERROR: Invalid secret, checksum cannot be calculated"
+    exit 1
+fi
 
+# parse variable "name", set issuer if supplied
 if [[ "$name" =~ ^(.*):(.*)$ ]]; then
 	issuer=${BASH_REMATCH[1]}
 	name=${BASH_REMATCH[2]}
 fi
 
+# parse variable "name", set domain if supplied
 if [[ "$name" =~ ^(.*)@(.*)$ ]]; then
 	name=${BASH_REMATCH[1]}
 	domain=${BASH_REMATCH[2]}
-	if [[ -z "$domain" ]]; then
-		domain=$(hostname -f)
-	fi
 fi
 
+# construct "user"
 if [ -z "$domain" ]; then
 	user="$name"
 else
-	user="$name@$domain"
+	user="${name}@${domain}"
 fi
 
+# construct "issuer"
 if [ -z "$issuer" ]; then
-	uri="otpauth://$tokentype/$user?secret=$b32key"
+	uri="otpauth://${tokentype}/${user}?secret=${b32key}"
 else
-	uri="otpauth://$tokentype/$issuer:$user?secret=$b32key&issuer=$issuer"
+	uri="otpauth://${tokentype}/${issuer}:${user}?secret=${b32key}&issuer=${issuer}"
 fi
 
 echo "Key in Hex: $hexkey"
 echo "Key in b32: $b32key (checksum: $b32checksum)"
-echo ""
+echo
 echo "URI: $uri"
 
-qrencode -m 1 -s 1 "$uri" -o $tempfile
-filesize="$(file $tempfile | cut -d, -f2 | cut -d' ' -f2)"
-img2txt -H $filesize -W $(( $filesize * 2)) $tempfile
+# display QR Code on shell, if qrencode exists
+[ -x "$(command -v qrencode)" ] && qrencode --type $qrtype "$uri"; 
 
+# setup Yubikey, if tokentype is HOTP
 if [ "$tokentype" == "hotp" ]; then
     echo ""
     echo "Yubikey setup (Slot 1):"
-    echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a$hexkey"
+    echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
     echo "Yubikey setup (Slot 2):"
-    echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a$hexkey"
+    echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
 	algorithm="HOTP"
 fi
 
@@ -161,5 +187,3 @@ fi
 echo ""
 echo "users.oath / otp.users configuration:"
 echo "$algorithm $name - $hexkey"
-
-rm $tempfile
