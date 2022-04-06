@@ -54,35 +54,62 @@ function digitalRoot() {
     echo -n $(( sum % 10 ))
 }
 
-echo
+function usage() {
+    echo "usage: $(basename "$0") <username> [tokentype] [secret]"
+    echo
+    echo "Create OTP configurations for linOPT, mod_authn_otp, and Yubikey."
+    echo "The configurations and qrcode are output to stdout."
+    echo "If [secret] is provided, it is used as input for the configurations,"
+    echo "otherwise a random secret is generated."
+    echo "If a Yubikey is inserted prior to running, this program tries to write a"
+    echo "hotp configuration directly to the Yubikey."
+    echo ""
+    echo "username: [issuer:]username[@[domain]]"
+    echo "          using @ without domain uses"
+    echo "          host's FQDN as domain"
+    echo ""
+    echo "Options:"
+    echo "    tokentype: hotp | totp, default: totp"
+    echo "    secret: a hex encoded secret key, random if omitted"
+    echo ""
+}
 
-# define variables
-  name="$1"
+# globals
+# set output type of qrcode for displaying on shell, use environment-variable if set
+# [ ANSI ANSI256 ASCII ASCIIi UTF8 ANSIUTF8 ]
+if [ -z "${QRTYPE}" ]; then
+    QRTYPE=ANSI
+fi
+
+# check and parse parameters
+# check if "$1" is defined or "help" is requested
+[ -z "$1" ] || [[ "$1" =~ (-h|--help)  ]] && { usage; exit 0; }
+
+# $1 username
+name="$1"
 issuer=''
 domain=''
 
-# set output type of qrcode for displaying on shell, use environment-variable if set
-# [ ANSI ANSI256 ASCII ASCIIi UTF8 ANSIUTF8 ]
-if [ -z "${qrtype}" ]; then
-    qrtype=ANSI
+# parse variable "name", set issuer if supplied
+if [[ "${name}" =~ ^(.*):(.*)$ ]]; then
+	issuer=${BASH_REMATCH[1]}
+	name=${BASH_REMATCH[2]}
 fi
 
-# check if "name" is defined or "help" is requested
-if [ -z "$name" ] || [[ "$name" =~ (-h|--help)  ]]; then
-	echo "usage: $0 username [tokentype] [secret]"
-	echo ""
-	echo "username: [issuer:]username[@[domain]]"
-	echo "          using @ without domain uses"
-	echo "          host's FQDN as domain"
-	echo ""
-	echo "Options:"
-	echo "    tokentype: hotp | totp"
-	echo "    secret: a hex encoded secret key"
-	echo ""
-    exit 1
+# parse variable "name", set domain if supplied
+if [[ "${name}" =~ ^(.*)@(.*)$ ]]; then
+	name=${BASH_REMATCH[1]}
+	domain=${BASH_REMATCH[2]}
 fi
 
-# get token type
+# construct "user"
+if [ -z "${domain}" ]; then
+	user="${name}"
+else
+	user="${name}@${domain}"
+fi
+
+# $2 get token type
 type="$2"
 case "$type" in
     totp)
@@ -100,7 +127,7 @@ case "$type" in
     ;;
 esac
 
-# check for hexkey from user-input or generate a new one
+# $3 check for hexkey from user-input or generate a new one
 hexkey="$3"
 if [ -z "${hexkey}" ]; then
 	echo "INFO: No secret provided, generating random secret." >&2
@@ -123,8 +150,6 @@ if [[ ! "${hexkey}" =~ ^[A-Fa-f0-9]*$ ]]; then
 	exit 1
 fi
 
-echo
-
 # get base32 of hexkey
 b32key="$(printf '%s' "${hexkey}" | xxd -r -ps | base32)"
 
@@ -136,47 +161,79 @@ if [ -z "${b32checksum}" ]; then
     exit 1
 fi
 
-# parse variable "name", set issuer if supplied
-if [[ "${name}" =~ ^(.*):(.*)$ ]]; then
-	issuer=${BASH_REMATCH[1]}
-	name=${BASH_REMATCH[2]}
-fi
-
-# parse variable "name", set domain if supplied
-if [[ "${name}" =~ ^(.*)@(.*)$ ]]; then
-	name=${BASH_REMATCH[1]}
-	domain=${BASH_REMATCH[2]}
-fi
-
-# construct "user"
-if [ -z "${domain}" ]; then
-	user="${name}"
-else
-	user="${name}@${domain}"
-fi
-
-# construct "issuer"
+# construct "uri"
 if [ -z "${issuer}" ]; then
 	uri="otpauth://${tokentype}/${user}?secret=${b32key}"
 else
 	uri="otpauth://${tokentype}/${issuer}:${user}?secret=${b32key}&issuer=${issuer}"
 fi
 
+# display keys and uri
+echo 
 echo "Key in Hex: ${hexkey}"
 echo "Key in b32: ${b32key} (checksum: ${b32checksum})"
 echo
 echo "URI: ${uri}"
 
 # display QR Code on shell, if qrencode exists
-[ -x "$(command -v qrencode)" ] && qrencode --type ${qrtype} "${uri}"; 
+[ -x "$(command -v qrencode)" ] && qrencode --type ${QRTYPE} "${uri}"; 
+echo
 
 # setup Yubikey, if tokentype is HOTP
 if [ "${tokentype}" == "hotp" ]; then
-    echo ""
-    echo "Yubikey setup (Slot 1):"
-    echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
-    echo "Yubikey setup (Slot 2):"
-    echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
+    # check if yubikey inserted using ykinfo
+    # this is unfortunately extremely unreliable and prone to usb errors
+    # keep command substitution to minimum 
+    if [ -x "$(command -v ykinfo)" ]; then
+        ykhex="$(ykinfo -qH 2>/dev/null)"
+    else
+        echo "INFO: 'ykinfo' not found. Cannot probe yubikey." >&2
+    fi
+    ykp="$(command -v ykpersonalize 2>/dev/null)" 
+    if [ -n "${ykhex}" ] && [ -n "${ykp}" ]; then
+        echo "INFO: yubikey found." >&2
+        # find first free slot
+        slot1=$(ykinfo -q1)
+        slot2=$(ykinfo -q2)
+        if [ "${slot1}" -eq "0" ]; then
+            slot="1"
+            echo "INFO: found empty slot ${slot}." >&2
+        elif [ "${slot2}" -eq "0" ]; then
+            slot="2"
+            echo "INFO: found empty slot ${slot}." >&2
+        else
+            # no free slot found, ask user for slot
+            slot=""
+            echo "INFO: no empty slot found." >&2
+            while true; do
+                read -r -p "Select Yubikey slot (Warning, will be overwritten). (1/2): " slot
+                case "$slot" in
+                    1 ) break;;
+                    2 ) break;;
+                    * ) echo "Select either 1 or 2.";
+                esac
+            done
+        fi
+        # ask if option use numeric keypad should be used
+        numkey=""
+        while true; do
+            read -r -p "Do you want to use numeric keypad? (y/n): " yn
+            case "${yn}" in
+                [Yy]* ) numkey="-ouse-numeric-keypad"; break;;
+                [Nn]* ) numkey=""; break;;
+                * ) echo "Answer y or n.";
+            esac
+        done
+        # write configuration to key
+        echo "INFO: Running ykpersonalize -${slot} -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr ${numkey} -a${hexkey}" >&2
+        "$ykp" -"${slot}" -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr "${numkey}" -a"${hexkey}"
+    else
+        echo "Yubikey setup w/o option to use numeric keypad (-1: slot 1, -2: slot 2):"
+        echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
+        echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -ouse-numeric-keypad -a${hexkey}"
+        echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
+        echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -ouse-numeric-keypad -a${hexkey}"
+    fi
 fi
 
 echo ""
