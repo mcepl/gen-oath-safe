@@ -46,7 +46,7 @@ function digitalRoot() {
     local i=0
     
     while [ $i -lt ${#n} ] ; do
-        ord=$(printf '%s' ${n:i:1} | od -An -td | tr -d '[:blank:]')
+        ord=$(printf '%s' "${n:i:1}" | od -An -td | tr -d '[:blank:]')
         sum=$(( sum + ord )) # calculate sum of digits
         i=$(( i + 1 ))
     done
@@ -87,103 +87,98 @@ type="$2"
 case "$type" in
     totp)
         tokentype="totp"
-        tokenID="HOTP/T30"
+        algorithm="HOTP/T30"
     ;;
     hotp)
         tokentype="hotp"
-        tokenID="HOTP"
+        algorithm="HOTP"
     ;;
     *)
-        echo "INFO: Bad or no token type specified, using TOTP."
+        echo "INFO: Bad or no token type specified, using TOTP." >&2
         tokentype="totp"
-        tokenID="HOTP/T30"
+        algorithm="HOTP/T30"
     ;;
 esac
 
 # check for hexkey from user-input or generate a new one
 hexkey="$3"
-if [ -z "$hexkey" ]; then
-	echo "INFO: No secret provided, generating random secret."
+if [ -z "${hexkey}" ]; then
+	echo "INFO: No secret provided, generating random secret." >&2
 	
     # use openssl if existing, else use standard tools
     openssl="$(command -v openssl)"
-    if [ -z "$openssl" ]; then
+    if [ -z "${openssl}" ]; then
         hexkey="$(openssl rand 1024)"
     else
         hexkey="$(head -c 1024 /dev/urandom | tr -d '\0')"
     fi
     
-    # create url-safe base32 with a length of 30 characters
-    hexkey="$(printf '%s' $hexkey | base32 | tr -dc '[:alpha:][digit]' | od -tx1 -An | tr -d '[:space:]' | head -c 30 | tr -d '\n')"
+    # create url-safe base32 with a length of 40 characters
+    hexkey="$(printf '%s' "${hexkey}" | base32 | tr -dc '[:alpha:][digit]' | od -tx1 -An | tr -d '[:space:]' | head -c 40 | tr -d '\n')"
 fi
 
 # check hexkey
-if [[ ! "$hexkey" =~ ^[A-Fa-f0-9]*$ ]]; then
-	echo "ERROR: Invalid secret, must be hex encoded."
+if [[ ! "${hexkey}" =~ ^[A-Fa-f0-9]*$ ]]; then
+	echo "ERROR: Invalid secret, must be hex encoded." >&2
 	exit 1
 fi
 
 echo
 
 # get base32 of hexkey
-b32key="$(printf '%s' $hexkey | xxd -r -ps | base32)"
+b32key="$(printf '%s' "${hexkey}" | xxd -r -ps | base32)"
 
 # calculate checksum using "repeated digital sum"
-b32checksum=$(digitalRoot $b32key)
+b32checksum=$(digitalRoot "${b32key}")
 
-if [ -z $b32checksum ]; then
-    echo "ERROR: Invalid secret, checksum cannot be calculated"
+if [ -z "${b32checksum}" ]; then
+    echo "ERROR: Invalid secret, checksum cannot be calculated" >&2
     exit 1
 fi
 
 # parse variable "name", set issuer if supplied
-if [[ "$name" =~ ^(.*):(.*)$ ]]; then
+if [[ "${name}" =~ ^(.*):(.*)$ ]]; then
 	issuer=${BASH_REMATCH[1]}
 	name=${BASH_REMATCH[2]}
 fi
 
 # parse variable "name", set domain if supplied
-if [[ "$name" =~ ^(.*)@(.*)$ ]]; then
+if [[ "${name}" =~ ^(.*)@(.*)$ ]]; then
 	name=${BASH_REMATCH[1]}
 	domain=${BASH_REMATCH[2]}
 fi
 
 # construct "user"
-if [ -z "$domain" ]; then
-	user="$name"
+if [ -z "${domain}" ]; then
+	user="${name}"
 else
 	user="${name}@${domain}"
 fi
 
 # construct "issuer"
-if [ -z "$issuer" ]; then
+if [ -z "${issuer}" ]; then
 	uri="otpauth://${tokentype}/${user}?secret=${b32key}"
 else
 	uri="otpauth://${tokentype}/${issuer}:${user}?secret=${b32key}&issuer=${issuer}"
 fi
 
-echo "Key in Hex: $hexkey"
-echo "Key in b32: $b32key (checksum: $b32checksum)"
+echo "Key in Hex: ${hexkey}"
+echo "Key in b32: ${b32key} (checksum: ${b32checksum})"
 echo
-echo "URI: $uri"
+echo "URI: ${uri}"
 
 # display QR Code on shell, if qrencode exists
-[ -x "$(command -v qrencode)" ] && qrencode --type $qrtype "$uri"; 
+[ -x "$(command -v qrencode)" ] && qrencode --type ${qrtype} "${uri}"; 
 
 # setup Yubikey, if tokentype is HOTP
-if [ "$tokentype" == "hotp" ]; then
+if [ "${tokentype}" == "hotp" ]; then
     echo ""
     echo "Yubikey setup (Slot 1):"
     echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
     echo "Yubikey setup (Slot 2):"
     echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
-	algorithm="HOTP"
-fi
-
-if [ "$tokentype" == "totp" ]; then 
-	algorithm="HOTP/T30"
 fi
 
 echo ""
 echo "users.oath / otp.users configuration:"
-echo "$algorithm $name - $hexkey"
+echo "${algorithm} ${name} - ${hexkey}"
