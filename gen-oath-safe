@@ -81,6 +81,13 @@ if [ -z "${QRTYPE}" ]; then
     QRTYPE=ANSI
 fi
 
+# set commands
+_openssl="$(command -v openssl 2>/dev/null)"
+_qrencode="$(command -v qrencode 2>/dev/null)"
+_ykinfo="$(command -v ykinfo 2>/dev/null)"
+_ykp="$(command -v ykpersonalize 2>/dev/null)" 
+_ykman="$(command -v ykman 2>/dev/null)" 
+
 # check and parse parameters
 # check if "$1" is defined or "help" is requested
 [ -z "$1" ] || [[ "$1" =~ (-h|--help)  ]] && { usage; exit 0; }
@@ -133,9 +140,8 @@ if [ -z "${hexkey}" ]; then
 	echo "INFO: No secret provided, generating random secret." >&2
 	
     # use openssl if existing, else use standard tools
-    openssl="$(command -v openssl)"
-    if [ -z "${openssl}" ]; then
-        hexkey="$(openssl rand 1024)"
+    if [ -x "${_openssl}" ]; then
+        hexkey="$($_openssl rand 1024)"
     else
         hexkey="$(head -c 1024 /dev/urandom | tr -d '\0')"
     fi
@@ -176,7 +182,7 @@ echo
 echo "URI: ${uri}"
 
 # display QR Code on shell, if qrencode exists
-[ -x "$(command -v qrencode)" ] && qrencode --type ${QRTYPE} "${uri}"; 
+[ -x "$_qrencode" ] && $_qrencode --type ${QRTYPE} "${uri}"; 
 echo
 
 # setup Yubikey, if tokentype is HOTP
@@ -184,17 +190,16 @@ if [ "${tokentype}" == "hotp" ]; then
     # check if yubikey inserted using ykinfo
     # this is unfortunately extremely unreliable and prone to usb errors
     # keep command substitution to minimum 
-    if [ -x "$(command -v ykinfo)" ]; then
-        ykhex="$(ykinfo -qH 2>/dev/null)"
+    if [ -x "$_ykinfo" ]; then
+        ykhex="$($_ykinfo -qH 2>/dev/null)"
     else
         echo "INFO: 'ykinfo' not found. Cannot probe yubikey." >&2
     fi
-    ykp="$(command -v ykpersonalize 2>/dev/null)" 
-    if [ -n "${ykhex}" ] && [ -n "${ykp}" ]; then
+    if [ -n "${ykhex}" ] && [ -x "${_ykp}" ]; then
         echo "INFO: yubikey found." >&2
         # find first free slot
-        slot1=$(ykinfo -q1)
-        slot2=$(ykinfo -q2)
+        slot1=$($_ykinfo -q1)
+        slot2=$($_ykinfo -q2)
         if [ "${slot1}" -eq "0" ]; then
             slot="1"
             echo "INFO: found empty slot ${slot}." >&2
@@ -226,7 +231,7 @@ if [ "${tokentype}" == "hotp" ]; then
         done
         # write configuration to key
         echo "INFO: Running ykpersonalize -${slot} -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr ${numkey} -a${hexkey}" >&2
-        "$ykp" -"${slot}" -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr "${numkey}" -a"${hexkey}"
+        "$_ykp" -"${slot}" -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr "${numkey}" -a"${hexkey}"
     else
         echo "Yubikey setup w/o option to use numeric keypad (-1: slot 1, -2: slot 2):"
         echo "ykpersonalize -1 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -a${hexkey}"
@@ -235,6 +240,26 @@ if [ "${tokentype}" == "hotp" ]; then
         echo "ykpersonalize -2 -ooath-hotp -ooath-imf=0 -ofixed= -oappend-cr -ouse-numeric-keypad -a${hexkey}"
     fi
 fi
+
+# setup yubikey for totp
+if [ "${tokentype}" == "totp" ]; then
+    # check if yubikey inserted using ykinfo
+    # this is unfortunately extremely unreliable and prone to usb errors
+    # keep command substitution to minimum 
+    if [ -x "$_ykinfo" ]; then
+        ykhex="$($_ykinfo -qH 2>/dev/null)"
+    else
+        echo "INFO: 'ykinfo' not found. Cannot probe yubikey." >&2
+    fi 
+    if [ -n "${ykhex}" ] && [ -x "${_ykman}" ]; then
+        echo "INFO: yubikey found." >&2
+        echo "INFO: Running $_ykman oath accounts uri ${uri}" >&2
+        $_ykman oath accounts uri "${uri}"
+    else
+        echo "Yubikey setup:"
+        echo "ykman oath accounts uri \"${uri}\""
+    fi
+fi 
 
 echo ""
 echo "users.oath / otp.users configuration:"
