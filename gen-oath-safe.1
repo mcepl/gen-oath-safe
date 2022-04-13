@@ -1,0 +1,59 @@
+.TH GEN-OATH-SAFE "1" "April 2022" "gen-oath-safe " "User Commands"
+
+.SH NAME
+gen-oath-safe \- create codes and configurations for OTP 
+
+.SH SYNOPSIS
+.B gen\-oath\-safe
+[\fIOPTION\fR] [\fIISSUER:\fR]\fIUSERNAME\fR[\fI@DOMAIN\fR] [\fITOKENTYPE\fR] [\fISECRET\fR]
+
+.SH DESCRIPTION
+.PP
+Create OTP configurations for linOPT, mod_authn_otp, and Yubikey.
+The configurations and qrcode are output to stdout.
+If a Yubikey inserted prior to running, and Yubikey binaries are installed, 
+this program attempts to write the configuration directly to the Yubikey.
+
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+display help and exit
+.TP
+[\fIISSUER:\fR]\fIUSERNAME\fR[\fI@DOMAIN\fR]
+the account/user information. At least \fIUSERNAME\fR is mandatory. Both \fIISSUER\fR
+and \fIDOMAIN\fR are optional but useful to describe the actual account and 
+common components of an otpauth URI.  
+.TP
+[\fITOKENTYPE\fR]
+The type of OTP token. Either \fBtotp\fR (time-based, default) or \fBhotp\fR (counter-based).
+.TP
+[\fISECRET\fR]
+The OTP secret as hex encoded string. If omitted, a secret of 40 characters 
+is randomly generated using either \fBopenssl\fR (if available) or \fB/dev/urandom\fR.
+
+.SH BUGS
+.PP
+To review and report issues and bugs visit <https://github.com/mcepl/gen-oath-safe/issues>.
+.PP
+A known issue is a random USB error when trying to probe an inserted Yubikey in
+rapid succession. 
+
+.SH LICENSE
+.PP
+Licensed under the MIT license. See <https://mit-license.org/> for further information.
+
+.SH AUTHORS
+.PP
+Original code 2013 by Richard Monk. Maintained by Matěj Cepl since 2013. Major contributions
+by Thomas Zink. For complete list of contributors see
+<https://github.com/mcepl/gen-oath-safe/graphs/contributors>.
+
+.SH SEE ALSO
+.sp
+\fBoathtool\fP(1), \fBotptool\fP(1), \fBgenotpurl\fP(1), \fBqrencode\fP(1), \fBykinfo\fP(1), \fBopenssl\fP(1)
+.PP
+"HOTP: An HMAC-Based One-Time Password Algorithm" <http://www.ietf.org/rfc/rfc4226.txt>
+.PP
+"TOTP: Time-Based One-Time Password Algorithm" <https://www.ietf.org/rfc/rfc6238.txt>
+.PP
+"mod_authn_otp: Apache module for one-time password authentication" <https://github.com/archiecobbs/mod-authn-otp>
