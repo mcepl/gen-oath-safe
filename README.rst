@@ -4,4 +4,4 @@ up custom tokens for LinOTP.  It can create TOTP (time based) and HOTP
 Google Authenticator.  It can also provide the needed commands to
 prepare a Yubikey.
 
-Requires: python, openssl, qrencode, caca-utils
+Requires: python, openssl, qrencode, xxd
