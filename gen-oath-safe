@@ -6,7 +6,7 @@
 # https://post-office.corp.redhat.com/mailman/private/memo-list\
 #    /2013-February/msg00116.html
 # Copyright (C) 2013-2014 Matěj Cepl <mcepl@cepl.eu>
-# 
+#
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation
 # files (the "Software"), to deal in the Software without
@@ -15,11 +15,11 @@
 # sell copies of the Software, and to permit persons to whom the
 # Software is furnished to do so, subject to the following
 # conditions:
-# 
+#
 # The above copyright notice and this permission notice shall
 # be included in all copies or substantial portions of the
 # Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
 # ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
 # TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR
@@ -33,7 +33,7 @@
 function digitalRoot() {
     # Requires an input a string
     # JavaScript equivalent (for comparison):
-    # 
+    #
     # function digitalRoot(inNo) {
     #   var cipher_sum = Array.reduce(inNo, function(prev, cur) {
     #     return prev + cur.charCodeAt(0);
@@ -44,13 +44,13 @@ function digitalRoot() {
     local sum=0
     local n=$1
     local i=0
-    
+
     while [ $i -lt ${#n} ] ; do
         ord=$(printf '%s' "${n:i:1}" | od -An -td | tr -d '[:blank:]')
         sum=$(( sum + ord )) # calculate sum of digits
         i=$(( i + 1 ))
     done
-    
+
     echo -n $(( sum % 10 ))
 }
 
@@ -85,8 +85,8 @@ fi
 _openssl="$(command -v openssl 2>/dev/null)"
 _qrencode="$(command -v qrencode 2>/dev/null)"
 _ykinfo="$(command -v ykinfo 2>/dev/null)"
-_ykp="$(command -v ykpersonalize 2>/dev/null)" 
-_ykman="$(command -v ykman 2>/dev/null)" 
+_ykp="$(command -v ykpersonalize 2>/dev/null)"
+_ykman="$(command -v ykman 2>/dev/null)"
 
 # check and parse parameters
 # check if "$1" is defined or "help" is requested
@@ -138,14 +138,14 @@ esac
 hexkey="$3"
 if [ -z "${hexkey}" ]; then
 	echo "INFO: No secret provided, generating random secret." >&2
-	
+
     # use openssl if existing, else use standard tools
     if [ -x "${_openssl}" ]; then
         hexkey="$($_openssl rand 1024)"
     else
         hexkey="$(head -c 1024 /dev/urandom | tr -d '\0')"
     fi
-    
+
     # create url-safe base32 with a length of 40 characters
     hexkey="$(printf '%s' "${hexkey}" | base32 | tr -dc '[:alpha:][digit]' | od -tx1 -An | tr -d '[:space:]' | head -c 40 | tr -d '\n')"
 fi
@@ -175,21 +175,21 @@ else
 fi
 
 # display keys and uri
-echo 
+echo
 echo "Key in Hex: ${hexkey}"
 echo "Key in b32: ${b32key} (checksum: ${b32checksum})"
 echo
 echo "URI: ${uri}"
 
 # display QR Code on shell, if qrencode exists
-[ -x "$_qrencode" ] && $_qrencode --type ${QRTYPE} "${uri}"; 
+[ -x "$_qrencode" ] && $_qrencode --type ${QRTYPE} "${uri}";
 echo
 
 # setup Yubikey, if tokentype is HOTP
 if [ "${tokentype}" == "hotp" ]; then
     # check if yubikey inserted using ykinfo
     # this is unfortunately extremely unreliable and prone to usb errors
-    # keep command substitution to minimum 
+    # keep command substitution to minimum
     if [ -x "$_ykinfo" ]; then
         ykhex="$($_ykinfo -qH 2>/dev/null)"
     else
@@ -245,12 +245,12 @@ fi
 if [ "${tokentype}" == "totp" ]; then
     # check if yubikey inserted using ykinfo
     # this is unfortunately extremely unreliable and prone to usb errors
-    # keep command substitution to minimum 
+    # keep command substitution to minimum
     if [ -x "$_ykinfo" ]; then
         ykhex="$($_ykinfo -qH 2>/dev/null)"
     else
         echo "INFO: 'ykinfo' not found. Cannot probe yubikey." >&2
-    fi 
+    fi
     if [ -n "${ykhex}" ] && [ -x "${_ykman}" ]; then
         echo "INFO: yubikey found." >&2
         echo "INFO: Running $_ykman oath accounts uri ${uri}" >&2
@@ -259,7 +259,7 @@ if [ "${tokentype}" == "totp" ]; then
         echo "Yubikey setup:"
         echo "ykman oath accounts uri \"${uri}\""
     fi
-fi 
+fi
 
 echo ""
 echo "users.oath / otp.users configuration:"
