@@ -82,7 +82,6 @@ if [ -z "${QRTYPE}" ]; then
 fi
 
 # set commands
-_openssl="$(command -v openssl 2>/dev/null)"
 _qrencode="$(command -v qrencode 2>/dev/null)"
 _ykinfo="$(command -v ykinfo 2>/dev/null)"
 _ykp="$(command -v ykpersonalize 2>/dev/null)"
@@ -139,14 +138,8 @@ hexkey="$3"
 if [ -z "${hexkey}" ]; then
 	echo "INFO: No secret provided, generating random secret." >&2
 
-    # use openssl if existing, else use standard tools
-    if [ -x "${_openssl}" ]; then
-        hexkey="$($_openssl rand 1024)"
-    else
-        hexkey="$(head -c 1024 /dev/urandom | tr -d '\0')"
-    fi
-
     # create url-safe base32 with a length of 40 characters
+    hexkey="$(head -c 1024 /dev/urandom | tr -d '\0')"
     hexkey="$(printf '%s' "${hexkey}" | base32 | tr -dc '[:alpha:][digit]' | od -tx1 -An | tr -d '[:space:]' | head -c 40 | tr -d '\n')"
 fi
 

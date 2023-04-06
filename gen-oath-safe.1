@@ -29,7 +29,7 @@ The type of OTP token. Either \fBtotp\fR (time-based, default) or \fBhotp\fR (co
 .TP
 [\fISECRET\fR]
 The OTP secret as hex encoded string. If omitted, a secret of 40 characters 
-is randomly generated using either \fBopenssl\fR (if available) or \fB/dev/urandom\fR.
+is randomly generated using \fB/dev/urandom\fR.
 
 .SH BUGS
 .PP
@@ -50,7 +50,7 @@ by Thomas Zink. For complete list of contributors see
 
 .SH SEE ALSO
 .sp
-\fBoathtool\fP(1), \fBotptool\fP(1), \fBgenotpurl\fP(1), \fBqrencode\fP(1), \fBykinfo\fP(1), \fBopenssl\fP(1)
+\fBoathtool\fP(1), \fBotptool\fP(1), \fBgenotpurl\fP(1), \fBqrencode\fP(1), \fBykinfo\fP(1)
 .PP
 "HOTP: An HMAC-Based One-Time Password Algorithm" <http://www.ietf.org/rfc/rfc4226.txt>
 .PP

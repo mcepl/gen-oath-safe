@@ -61,9 +61,6 @@ Requirements
 
 -  **xxd**, **base32**: to convert the hexadecimal secret to base32
 
--  **openssl** (optional, recommended): to create random secrets. If not
-   present, the script reads from ``/dev/urandom``.
-
 -  **qrencode** (optional, recommended): to create the qr code from the
    uri and display it on stdout.
 
