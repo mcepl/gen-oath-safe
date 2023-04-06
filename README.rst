@@ -1,3 +1,5 @@
+FUTURE DEVELOPMENT ON https://git.sr.ht/~mcepl/gen-oath-safe
+
 gen-oath-safe
 =============
 
